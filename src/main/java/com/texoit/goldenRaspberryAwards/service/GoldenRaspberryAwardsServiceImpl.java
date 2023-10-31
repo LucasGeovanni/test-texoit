@@ -26,6 +26,7 @@ public class GoldenRaspberryAwardsServiceImpl implements GoldenRaspberryAwardsSe
                 .collect(Collectors.toList());
 
        if(ObjectUtils.isEmpty(movieInformationsByIntervals)) {
+           log.info("Nenhum registro encontrado!");
             return Optional.empty();
         }
        // TODO agrupar logicas
@@ -64,10 +65,13 @@ public class GoldenRaspberryAwardsServiceImpl implements GoldenRaspberryAwardsSe
                         .build());
             }
         });
-
-        int indexResult = result.stream().map(AwardsIntervalResponseDTO::getInterval).mapToInt(x -> x).max()
-                .orElseThrow(NoSuchElementException::new);
-        return result.stream().filter(r-> r.getInterval() == indexResult).collect(Collectors.toList());
+        if (!result.isEmpty()) {
+            int indexResult = result.stream().map(AwardsIntervalResponseDTO::getInterval).mapToInt(x -> x).max()
+                    .orElseThrow(NoSuchElementException::new);
+            return result.stream().filter(r -> r.getInterval() == indexResult).collect(Collectors.toList());
+        }
+        log.info("\"max\" Vazio!");
+        return Collections.emptyList();
     }
 
     private List<MovieInformationDTO> getMovieInformationByKey(Map<Integer, List<MovieInformationDTO>> intervals, int maxInterval) {
@@ -104,9 +108,13 @@ public class GoldenRaspberryAwardsServiceImpl implements GoldenRaspberryAwardsSe
                         .build());
             }
         });
-        int indexResult = result.stream().map(AwardsIntervalResponseDTO::getInterval).mapToInt(x -> x).min()
-                .orElseThrow(NoSuchElementException::new);
-        return result.stream().filter(r-> r.getInterval() == indexResult).collect(Collectors.toList());
+        if (!result.isEmpty()) {
+            int indexResult = result.stream().map(AwardsIntervalResponseDTO::getInterval).mapToInt(x -> x).min()
+                    .orElseThrow(NoSuchElementException::new);
+            return result.stream().filter(r-> r.getInterval() == indexResult).collect(Collectors.toList());
+        }
+        log.info("\"min\" Vazio!");
+        return Collections.emptyList();
     }
 
     private Map<Integer, List<MovieInformationDTO>> mountIntervals(List<MovieInformationDTO> producersList) {
