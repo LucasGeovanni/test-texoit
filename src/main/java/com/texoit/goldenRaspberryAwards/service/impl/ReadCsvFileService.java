@@ -41,18 +41,22 @@ public class ReadCsvFileService {
             while ((line = br.readLine()) != null) {
                 String[] split = line.split(csvSplitBy);
                 if (count > 0) {
-                    var year = getInfo(0, split);
-                    var title = getInfo(1, split);
-                    var studios = getInfo(2, split);
-                    var producers = getInfo(3, split);
-                    var winner = getInfo(4, split);
-                    movieList.add(MovieInformationDTO.builder()
-                            .year(Objects.nonNull(year) ? Integer.valueOf(year) : null)
-                            .title(title)
-                            .studios(studios)
-                            .producers(producers)
-                            .winner(isWinner(winner))
-                            .build());
+                    try {
+                        var year = getInfo(0, split);
+                        var title = getInfo(1, split);
+                        var studios = getInfo(2, split);
+                        var producers = getInfo(3, split);
+                        var winner = getInfo(4, split);
+                        movieList.add(MovieInformationDTO.builder()
+                                .year(Objects.nonNull(year) ? Integer.valueOf(year) : null)
+                                .title(title)
+                                .studios(studios)
+                                .producers(producers)
+                                .winner(isWinner(winner))
+                                .build());
+                    } catch (Exception e) {
+                        log.error("Erro ao ler a linha {}", count);
+                    }
                 }
                 count++;
 

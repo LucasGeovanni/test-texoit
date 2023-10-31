@@ -29,103 +29,88 @@ public class GoldenRaspberryAwardsServiceImpl implements GoldenRaspberryAwardsSe
            log.info("Nenhum registro encontrado!");
             return Optional.empty();
         }
-       // TODO agrupar logicas
+        Map<String, List<MovieInformationDTO>> producersGroup = movieInformationsByIntervals.stream().collect(Collectors.groupingBy(MovieInformationDTO::getProducers));
+        Map<String, List<MovieInformationDTO>> consecutiveGroup = producersGroup.entrySet().stream()
+                .filter(entry -> entry.getValue().size() > 1)
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        List<Map<Integer, List<MovieInformationDTO>>> intervals = mountIntervals(consecutiveGroup);
+
+        var minInterval = intervals.stream()
+                .flatMap(map -> map.keySet().stream())
+                .min(Integer::compareTo).orElse(0);
+
+        var maxInterval = intervals.stream()
+                .flatMap(map -> map.keySet().stream())
+                .max(Integer::compareTo).orElse(Integer.MAX_VALUE);
+
+        List<AwardsIntervalResponseDTO> min = calculateRange(intervals, minInterval, "min");
+        List<AwardsIntervalResponseDTO> max = calculateRange(intervals, maxInterval, "max");
+
         return Optional.of(GoldenRaspberryAwardsResponseDTO.builder()
-                .min(calculateSmallestRange(movieInformationsByIntervals))
-                .max(calculateLargestRange(movieInformationsByIntervals))
+                .min(min)
+                .max(max)
                 .build());
     }
 
-    private List<AwardsIntervalResponseDTO> calculateLargestRange(List<MovieInformationDTO> movies) {
+    private List<AwardsIntervalResponseDTO> calculateRange(List<Map<Integer, List<MovieInformationDTO>>> producerGroup, int interval, String type) {
         List<AwardsIntervalResponseDTO> result = new ArrayList<>();
-        Map<String, List<MovieInformationDTO>> group = movies.stream().collect(Collectors.groupingBy(MovieInformationDTO::getProducers));
-        group.forEach((producerName, producersList)-> {
-            if (producersList.size() > 1) {  Map<Integer, List<MovieInformationDTO>> intervals = mountIntervals(producersList);
 
-                int maxInterval = intervals.keySet().stream()
-                        .mapToInt(Integer::intValue)
-                        .max()
-                        .getAsInt();
+        producerGroup.forEach(y-> y.entrySet().stream().filter(x-> x.getKey().equals(interval)).forEach(map-> {
+            List<Integer> yearsListMin = map.getValue().stream().map(MovieInformationDTO::getYear).collect(Collectors.toList());
+                    var previous = Collections.min(yearsListMin);
+                    var following = Integer.MAX_VALUE;
 
-                List<MovieInformationDTO> movieInformationDTOS = getMovieInformationByKey(intervals, maxInterval);
-                List<Integer> yearsList = movieInformationDTOS.stream().map(MovieInformationDTO::getYear).collect(Collectors.toList());
-                int previous = Collections.min(yearsList);
-                int following = Integer.MAX_VALUE;
+                    var producer = map.getValue().stream().findFirst().map(MovieInformationDTO::getProducers).orElseThrow();
 
-                for (Integer valor : yearsList) {
-                    if (valor > previous && valor < following) {
-                        following = valor;
+                    for (Integer valor : yearsListMin) {
+                        if (valor > previous && valor < following) {
+                            following = valor;
+                        }
                     }
-                }
-                result.add(AwardsIntervalResponseDTO.builder()
-                        .previousWin(previous)
-                        .followingWin(following)
-                        .producer(producerName)
-                        .interval(maxInterval)
-                        .build());
-            }
-        });
+                    result.add(AwardsIntervalResponseDTO.builder()
+                            .previousWin(previous)
+                            .followingWin(following)
+                            .producer(producer)
+                            .interval(interval)
+                            .build());
+                })
+        );
+        return filterResults(result, type);
+    }
+
+    private List<AwardsIntervalResponseDTO> filterResults(List<AwardsIntervalResponseDTO> result, String type) {
         if (!result.isEmpty()) {
-            int indexResult = result.stream().map(AwardsIntervalResponseDTO::getInterval).mapToInt(x -> x).max()
-                    .orElseThrow(NoSuchElementException::new);
-            return result.stream().filter(r -> r.getInterval() == indexResult).collect(Collectors.toList());
+            Integer interval = interval(type, result.stream()
+                    .map(AwardsIntervalResponseDTO::getInterval).collect(Collectors.toList()));
+
+            return result.stream().filter(r -> interval.equals(r.getInterval())).collect(Collectors.toList());
         }
-        log.info("\"max\" Vazio!");
         return Collections.emptyList();
     }
 
-    private List<MovieInformationDTO> getMovieInformationByKey(Map<Integer, List<MovieInformationDTO>> intervals, int maxInterval) {
-        return intervals.get(maxInterval);
+    private Integer interval(String type, List<Integer> intervals) {
+        if ("max".equals(type)) {
+           return intervals.stream().max(Comparator.comparing(value -> value)).orElse(0);
+        } else {
+            return intervals.stream().min(Comparator.comparing(value -> value)).orElse(0);
+        }
     }
 
-    private List<AwardsIntervalResponseDTO> calculateSmallestRange(List<MovieInformationDTO> movies) {
-        List<AwardsIntervalResponseDTO> result = new ArrayList<>();
-        Map<String, List<MovieInformationDTO>> producers = movies.stream().collect(Collectors.groupingBy(MovieInformationDTO::getProducers));
-        producers.forEach((producerName, producersList)-> {
-            if (producersList.size() > 1) {
-                Map<Integer, List<MovieInformationDTO>> intervals = mountIntervals(producersList);
 
-                int minInterval = intervals.keySet().stream()
-                        .mapToInt(Integer::intValue)
-                        .min()
-                        .getAsInt();
-
-                List<MovieInformationDTO> movieInformationDTOS = getMovieInformationByKey(intervals, minInterval);
-                List<Integer> yearsList = movieInformationDTOS.stream().map(MovieInformationDTO::getYear).collect(Collectors.toList());
-                int previous = Collections.min(yearsList);
-                int following = Integer.MAX_VALUE;
-
-                for (Integer valor : yearsList) {
-                    if (valor > previous && valor < following) {
-                        following = valor;
-                    }
-                }
-                result.add(AwardsIntervalResponseDTO.builder()
-                        .previousWin(previous)
-                        .followingWin(following)
-                        .producer(producerName)
-                        .interval(minInterval)
-                        .build());
+    private List<Map<Integer, List<MovieInformationDTO>>> mountIntervals(Map<String, List<MovieInformationDTO>> producersGroup) {
+        List<Map<Integer, List<MovieInformationDTO>>> response = new ArrayList<>();
+        producersGroup.forEach((key, producersList)-> {
+            Map<Integer, List<MovieInformationDTO>> intervals = new HashMap<>();
+            sortByYear(producersList);
+            for (int i = 0; i < producersList.size()-1; i++) {
+                MovieInformationDTO first = producersList.get(i);
+                MovieInformationDTO second = producersList.get(i+1);
+                intervals.putAll(getIntervals(first, second));
             }
+            response.add(intervals);
         });
-        if (!result.isEmpty()) {
-            int indexResult = result.stream().map(AwardsIntervalResponseDTO::getInterval).mapToInt(x -> x).min()
-                    .orElseThrow(NoSuchElementException::new);
-            return result.stream().filter(r-> r.getInterval() == indexResult).collect(Collectors.toList());
-        }
-        log.info("\"min\" Vazio!");
-        return Collections.emptyList();
-    }
-
-    private Map<Integer, List<MovieInformationDTO>> mountIntervals(List<MovieInformationDTO> producersList) {
-        sortByYear(producersList);
-        Map<Integer, List<MovieInformationDTO>> intervals = new HashMap<>();
-        for (int i = 0; i < producersList.size()-1; i++) {
-            MovieInformationDTO first = producersList.get(i);
-            MovieInformationDTO second = producersList.get(i+1);
-            intervals.putAll(getIntervals(first, second));
-        }
-        return intervals;
+        return response;
     }
 
     private Map<Integer, List<MovieInformationDTO>> getIntervals(MovieInformationDTO first, MovieInformationDTO second) {
@@ -137,7 +122,5 @@ public class GoldenRaspberryAwardsServiceImpl implements GoldenRaspberryAwardsSe
     private void sortByYear(List<MovieInformationDTO> list) {
         list.sort(Comparator.comparing(MovieInformationDTO::getYear));
     }
-
-
 
 }
