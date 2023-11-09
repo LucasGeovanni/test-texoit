@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.ObjectUtils;
 
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -17,6 +18,9 @@ import java.util.stream.Collectors;
 public class GoldenRaspberryAwardsServiceImpl implements GoldenRaspberryAwardsService {
 
     private final MovieInformationService movieInformationService;
+
+    private final String regex =  ", |and ";
+   private final Pattern pattern = Pattern.compile(regex);
 
     @Override
     public Optional<GoldenRaspberryAwardsResponseDTO> findAwardsGeneralInfo(Integer minYear, Integer maxYear) {
@@ -29,7 +33,8 @@ public class GoldenRaspberryAwardsServiceImpl implements GoldenRaspberryAwardsSe
            log.info("Nenhum registro encontrado!");
             return Optional.empty();
         }
-        Map<String, List<MovieInformationDTO>> producersGroup = movieInformationsByIntervals.stream().collect(Collectors.groupingBy(MovieInformationDTO::getProducers));
+        List<MovieInformationDTO> splitByProducers = splitByProducer(movieInformationsByIntervals);
+        Map<String, List<MovieInformationDTO>> producersGroup = splitByProducers.stream().collect(Collectors.groupingBy(MovieInformationDTO::getProducers));
         Map<String, List<MovieInformationDTO>> consecutiveGroup = producersGroup.entrySet().stream()
                 .filter(entry -> entry.getValue().size() > 1)
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
@@ -51,6 +56,35 @@ public class GoldenRaspberryAwardsServiceImpl implements GoldenRaspberryAwardsSe
                 .min(min)
                 .max(max)
                 .build());
+    }
+
+    private List<MovieInformationDTO> splitByProducer(List<MovieInformationDTO> movieInformationsByIntervals) {
+        List<MovieInformationDTO> splitByProducers = new ArrayList<>();
+        movieInformationsByIntervals.forEach(movieInformation-> {
+            if (pattern.matcher(movieInformation.getProducers()).find()) {
+
+                setMultipleProducers(splitByProducers, movieInformation);
+
+            } else {
+                splitByProducers.add(movieInformation);
+            }
+        });
+
+        return splitByProducers;
+    }
+
+    private void setMultipleProducers(List<MovieInformationDTO> splitByProducers, MovieInformationDTO movieInformation) {
+        String[] producers = movieInformation.getProducers().split(regex);
+
+        Arrays.stream(producers).forEach(producer -> {
+            splitByProducers.add(MovieInformationDTO.builder()
+                            .producers(producer)
+                            .studios(movieInformation.getStudios())
+                            .title(movieInformation.getTitle())
+                            .year(movieInformation.getYear())
+                            .winner(movieInformation.getWinner())
+                    .build());
+        });
     }
 
     private List<AwardsIntervalResponseDTO> calculateRange(List<Map<Integer, List<MovieInformationDTO>>> producerGroup, int interval, String type) {
