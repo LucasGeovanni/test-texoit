@@ -15,5 +15,6 @@ public class MovieInformationDTO {
     private String studios;
     private String producers;
     private Boolean winner;
+    private Integer interval;
 
 }

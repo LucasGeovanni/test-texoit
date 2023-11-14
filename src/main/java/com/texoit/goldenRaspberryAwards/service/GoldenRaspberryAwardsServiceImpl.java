@@ -34,28 +34,42 @@ public class GoldenRaspberryAwardsServiceImpl implements GoldenRaspberryAwardsSe
             return Optional.empty();
         }
         List<MovieInformationDTO> splitByProducers = splitByProducer(movieInformationsByIntervals);
-        Map<String, List<MovieInformationDTO>> producersGroup = splitByProducers.stream().collect(Collectors.groupingBy(MovieInformationDTO::getProducers));
-        Map<String, List<MovieInformationDTO>> consecutiveGroup = producersGroup.entrySet().stream()
+
+        Map<String, List<MovieInformationDTO>> consecutiveGroup = splitByProducers.stream()
+                .collect(Collectors.groupingBy(MovieInformationDTO::getProducers)).entrySet().stream()
                 .filter(entry -> entry.getValue().size() > 1)
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
-        List<Map<Integer, List<MovieInformationDTO>>> intervals = mountIntervals(consecutiveGroup);
+        List<AwardsIntervalResponseDTO> list = mountIntervals(consecutiveGroup);
 
-        var minInterval = intervals.stream()
-                .flatMap(map -> map.keySet().stream())
-                .min(Integer::compareTo).orElse(0);
+        var minInterval = list.stream()
+                .map(AwardsIntervalResponseDTO::getInterval)
+                .min(Integer::compare).orElse(0);
 
-        var maxInterval = intervals.stream()
-                .flatMap(map -> map.keySet().stream())
-                .max(Integer::compareTo).orElse(Integer.MAX_VALUE);
+        var maxInterval = list.stream()
+                .map(AwardsIntervalResponseDTO::getInterval)
+                .max(Integer::compare).orElse(Integer.MAX_VALUE);
 
-        List<AwardsIntervalResponseDTO> min = calculateRange(intervals, minInterval, "min");
-        List<AwardsIntervalResponseDTO> max = calculateRange(intervals, maxInterval, "max");
+        List<AwardsIntervalResponseDTO> min = list.stream().filter(x-> x.getInterval().equals(minInterval)).collect(Collectors.toList());
+        List<AwardsIntervalResponseDTO> max = list.stream().filter(x-> x.getInterval().equals(maxInterval)).collect(Collectors.toList());
 
         return Optional.of(GoldenRaspberryAwardsResponseDTO.builder()
                 .min(min)
                 .max(max)
                 .build());
+    }
+
+    private List<AwardsIntervalResponseDTO> mountIntervals(Map<String, List<MovieInformationDTO>> producersGroup) {
+        List<AwardsIntervalResponseDTO> response = new ArrayList<>();
+        producersGroup.forEach((key, producersList)-> {
+            sortByYear(producersList);
+            for (int i = 0; i < producersList.size()-1; i++) {
+                MovieInformationDTO first = producersList.get(i);
+                MovieInformationDTO second = producersList.get(i+1);
+                response.add(getIntervals2(key, first.getYear(), second.getYear()));
+            }
+        });
+        return response;
     }
 
     private List<MovieInformationDTO> splitByProducer(List<MovieInformationDTO> movieInformationsByIntervals) {
@@ -87,31 +101,6 @@ public class GoldenRaspberryAwardsServiceImpl implements GoldenRaspberryAwardsSe
         });
     }
 
-    private List<AwardsIntervalResponseDTO> calculateRange(List<Map<Integer, List<MovieInformationDTO>>> producerGroup, int interval, String type) {
-        List<AwardsIntervalResponseDTO> result = new ArrayList<>();
-
-        producerGroup.forEach(y-> y.entrySet().stream().filter(x-> x.getKey().equals(interval)).forEach(map-> {
-            List<Integer> yearsListMin = map.getValue().stream().map(MovieInformationDTO::getYear).collect(Collectors.toList());
-                    var previous = Collections.min(yearsListMin);
-                    var following = Integer.MAX_VALUE;
-
-                    var producer = map.getValue().stream().findFirst().map(MovieInformationDTO::getProducers).orElseThrow();
-
-                    for (Integer valor : yearsListMin) {
-                        if (valor > previous && valor < following) {
-                            following = valor;
-                        }
-                    }
-                    result.add(AwardsIntervalResponseDTO.builder()
-                            .previousWin(previous)
-                            .followingWin(following)
-                            .producer(producer)
-                            .interval(interval)
-                            .build());
-                })
-        );
-        return filterResults(result, type);
-    }
 
     private List<AwardsIntervalResponseDTO> filterResults(List<AwardsIntervalResponseDTO> result, String type) {
         if (!result.isEmpty()) {
@@ -132,25 +121,22 @@ public class GoldenRaspberryAwardsServiceImpl implements GoldenRaspberryAwardsSe
     }
 
 
-    private List<Map<Integer, List<MovieInformationDTO>>> mountIntervals(Map<String, List<MovieInformationDTO>> producersGroup) {
-        List<Map<Integer, List<MovieInformationDTO>>> response = new ArrayList<>();
-        producersGroup.forEach((key, producersList)-> {
-            Map<Integer, List<MovieInformationDTO>> intervals = new HashMap<>();
-            sortByYear(producersList);
-            for (int i = 0; i < producersList.size()-1; i++) {
-                MovieInformationDTO first = producersList.get(i);
-                MovieInformationDTO second = producersList.get(i+1);
-                intervals.putAll(getIntervals(first, second));
-            }
-            response.add(intervals);
-        });
-        return response;
-    }
-
-    private Map<Integer, List<MovieInformationDTO>> getIntervals(MovieInformationDTO first, MovieInformationDTO second) {
-        Map<Integer, List<MovieInformationDTO>> map = new HashMap<>();
-        map.put(second.getYear() - first.getYear(), Arrays.asList(first, second));
+    private Map<String, List<MovieInformationDTO>> getIntervals(MovieInformationDTO first, MovieInformationDTO second, Integer sizeIndex) {
+        Map<String, List<MovieInformationDTO>> map = new HashMap<>();
+        int interval = second.getYear() - first.getYear();
+        first.setInterval(interval);
+        second.setInterval(interval);
+        map.put(String.format("%s%s", sizeIndex.toString(), interval), Arrays.asList(first, second));
         return map;
+    }
+    private AwardsIntervalResponseDTO getIntervals2(String producer, Integer firstYear, Integer secondYear) {
+        int interval = secondYear - firstYear;
+        return AwardsIntervalResponseDTO.builder()
+                .interval(interval)
+                .previousWin(firstYear)
+                .followingWin(secondYear)
+                .producer(producer)
+                .build();
     }
 
     private void sortByYear(List<MovieInformationDTO> list) {
